@@ -1,0 +1,23 @@
+# Unity generated
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Mm]emoryCaptures/
+/[Uu]serSettings/
+
+# Visual Studio / IDE
+/[Ll]ogs/
+.vs/
+*.csproj
+*.unitypackage
+*.sln
+
+# Python / ML-Agents
+venv/
+results/
+*.onnx
+__pycache__/
+.ipynb_checkpoints/
