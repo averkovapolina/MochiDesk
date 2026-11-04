@@ -2,8 +2,8 @@ behaviors:
   CatSorting:
     trainer_type: ppo
     hyperparameters:
-      batch_size: 512
-      buffer_size: 5120
+      batch_size: 1024
+      buffer_size: 20480
       learning_rate: 3.0e-4
       beta: 5.0e-3
       epsilon: 0.2
@@ -15,10 +15,10 @@ behaviors:
       num_layers: 2
     reward_signals:
       extrinsic:
-        gamma: 0.99
+        gamma: 0.995
         strength: 1.0
-    max_steps: 300000
-    time_horizon: 64
+    max_steps: 500000
+    time_horizon: 128
     checkpoint_interval: 50000
     summary_freq: 10000
 
@@ -27,19 +27,15 @@ environment_parameters:
     curriculum:
       - name: Near
         completion_criteria:
-          measure: reward
+          measure: progress
           behavior: CatSorting
-          signal_smoothing: true
-          min_lesson_length: 100
-          threshold: -0.5
-        value: 0.25
+          threshold: 0.25
+        value: 0.22
       - name: Medium
         completion_criteria:
-          measure: reward
+          measure: progress
           behavior: CatSorting
-          signal_smoothing: true
-          min_lesson_length: 100
-          threshold: -0.1
-        value: 0.5
+          threshold: 0.5
+        value: 0.45
       - name: Anywhere
         value: 10.0

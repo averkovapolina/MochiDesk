@@ -106,7 +106,7 @@ public class Hole : MonoBehaviour
 
         Vector3 d = other.transform.position - transform.position;
         d.y = 0f;
-        if (d.magnitude > radius * 0.9f) return;
+        if (d.magnitude > radius) return;   // what you see is what counts: center inside the colored disc
 
         s.done = true;
 

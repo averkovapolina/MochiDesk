@@ -6,14 +6,24 @@ using Unity.MLAgents.Actuators;
 
 public class CatAgent : Agent
 {
-    [Header("Reward shaping")]
-    [Tooltip("Reward per meter the cat gets closer to the push point behind the shape")]
-    public float approachScale = 1.0f;
-    [Tooltip("Reward per meter the shape gets closer to its own hole")]
-    public float pushScale = 5.0f;
+    [Header("Outcome rewards")]
+    [Tooltip("Shape in the correct hole. Must be clearly larger than the total shaping reward")]
+    public float correctReward = 3.0f;
+    public float wrongHolePenalty = -1.0f;
+    [Tooltip("Same as timeout on purpose: pushing a shape off the desk must not be cheaper than doing nothing")]
+    public float shapeFellPenalty = -1.0f;
+    public float shapeTimeoutPenalty = -1.0f;
+    public float bombPenalty = -1.0f;
+    public float catFellPenalty = -1.0f;
+
+    [Header("Reward shaping (reward = scale * distance gained)")]
+    [Tooltip("Cat gets closer to the push point behind the shape")]
+    public float approachScale = 0.5f;
+    [Tooltip("Shape gets closer to its own hole")]
+    public float pushScale = 2.0f;
     [Tooltip("Distance behind the shape (opposite to its hole) where the cat should stand, meters")]
     public float pushOffset = 0.12f;
-    [Tooltip("Total time penalty if an episode runs until Max Step (spread over all steps)")]
+    [Tooltip("Total time penalty if an episode runs until Max Step")]
     public float timePenaltyTotal = 0.5f;
 
     [Header("Debug")]
@@ -48,7 +58,11 @@ public class CatAgent : Agent
     public override void OnEpisodeBegin()
     {
         // The previous episode ran out of steps without any event
-        if (episodeStarted && !endedByEvent) Count("Timeout");
+        if (episodeStarted && !endedByEvent)
+        {
+            Count("Timeout");
+            Academy.Instance.StatsRecorder.Add("Success/Rate", 0f, StatAggregationMethod.Average);
+        }
         episodeStarted = true;
         endedByEvent = false;
 
@@ -65,23 +79,29 @@ public class CatAgent : Agent
         ShapeSpawner.ResetWorld();   // remove old shapes/bombs and restart the timers
     }
 
-    // Space Size = 18: cat position (3) + shape relative to cat (3) + shape color one-hot (3)
-    //                  + shape to its own hole (3) + push point relative to cat (3)
-    //                  + nearest bomb or bomb warning relative to cat (3)
+    // Space Size = 22:
+    //   cat position (3) + cat velocity (2)
+    //   + shape relative to cat (3) + shape color one-hot (3) + shape to its own hole (3)
+    //   + push point relative to cat (3) + shape velocity (2)
+    //   + nearest bomb or bomb warning relative to cat (3)
     public override void CollectObservations(VectorSensor sensor)
     {
         sensor.AddObservation(transform.localPosition);
+        sensor.AddObservation(Flat2(catRb != null ? catRb.linearVelocity : Vector3.zero));
 
         ShapeInfo s = NearestShape();
         if (s != null)
         {
             Hole h = GetHole(s.colorIndex);
+            Rigidbody srb = s.GetComponent<Rigidbody>();
+
             sensor.AddObservation(s.transform.position - transform.position);
             sensor.AddOneHotObservation(s.colorIndex, GameColors.All.Length);
             sensor.AddObservation(h != null
                 ? h.transform.position - s.transform.position
                 : Vector3.zero);
             sensor.AddObservation(Flat(PushPoint(s, h) - transform.position));
+            sensor.AddObservation(Flat2(srb != null ? srb.linearVelocity : Vector3.zero));
         }
         else
         {
@@ -89,6 +109,7 @@ public class CatAgent : Agent
             sensor.AddObservation(new float[GameColors.All.Length]);
             sensor.AddObservation(Vector3.zero);
             sensor.AddObservation(Vector3.zero);
+            sensor.AddObservation(Vector2.zero);
         }
 
         Transform danger = NearestDanger();
@@ -150,16 +171,19 @@ public class CatAgent : Agent
     }
 
     // ---------- events (called by Hole, ShapeInfo, Bomb, MochiController) ----------
-    public void RewardCorrectSorting() { EndWith("Correct", 1.0f); }
-    public void PenaltyWrongSorting() { EndWith("WrongHole", -1.0f); }
-    public void PenaltyMissedShape() { EndWith("ShapeFell", -0.5f); }
-    public void PenaltyShapeTimeout() { EndWith("ShapeTimeout", -1.0f); }
-    public void PenaltyHitByBomb() { EndWith("Bomb", -1.0f); }
-    public void PenaltyFellOff() { EndWith("CatFell", -1.0f); }
+    public void RewardCorrectSorting() { EndWith("Correct", correctReward); }
+    public void PenaltyWrongSorting() { EndWith("WrongHole", wrongHolePenalty); }
+    public void PenaltyMissedShape() { EndWith("ShapeFell", shapeFellPenalty); }
+    public void PenaltyShapeTimeout() { EndWith("ShapeTimeout", shapeTimeoutPenalty); }
+    public void PenaltyHitByBomb() { EndWith("Bomb", bombPenalty); }
+    public void PenaltyFellOff() { EndWith("CatFell", catFellPenalty); }
 
     void EndWith(string key, float reward)
     {
         Count(key);
+        // Share of successful episodes (0..1), the main quality metric in TensorBoard
+        Academy.Instance.StatsRecorder.Add("Success/Rate", key == "Correct" ? 1f : 0f, StatAggregationMethod.Average);
+
         endedByEvent = true;
         AddReward(reward);
         EndEpisode();
@@ -179,6 +203,7 @@ public class CatAgent : Agent
 
     // ---------- helpers ----------
     static Vector3 Flat(Vector3 v) { v.y = 0f; return v; }
+    static Vector2 Flat2(Vector3 v) { return new Vector2(v.x, v.z); }
 
     // The spot right behind the shape, on the opposite side from its hole
     Vector3 PushPoint(ShapeInfo s, Hole h)
